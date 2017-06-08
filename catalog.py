@@ -1,5 +1,7 @@
 #-*- coding: utf-8 -*-
 
+import logging
+import logging.config
 import re
 import datetime
 import urllib
@@ -8,6 +10,38 @@ import requests
 from collections import OrderedDict
 from lxml import etree
 from pymongo import MongoClient
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": (
+                "[%(asctime)s][%(filename)s:%(lineno)d]"
+                "[%(levelname)s][%(name)s]: %(message)s"
+            ),
+        },
+    },
+    "handlers": {
+        "catalog": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": "INFO",
+            "formatter": "default",
+            "filename": "./log/catalog.log",
+            "maxBytes": 102400,
+            "backupCount": 2,
+        },
+    },
+    "loggers": {
+        "catalog": {
+            "level": "INFO",
+            "handlers": ['catalog'],
+        },
+    },
+}
+
+logging.config.dictConfig(LOGGING)
+catalog_logger = logging.getLogger("catalog")
 
 client = MongoClient()
 
@@ -52,8 +86,8 @@ def get_catalog_info(url):
         novel_link_query = urlparse.urlparse(novel_link).query
         novel_id = urlparse.parse_qs(novel_link_query)['novelid'][0]
 
-        print info[5]
-        print info[7]
+        print info[1]
+        catalog_logger.info(info[1])
         catalog = OrderedDict([
             ("novel", info[1]),
             ("novel_id", int(novel_id)),
@@ -75,6 +109,7 @@ def get_catalog_info(url):
 
     # 获取下一页的 link
     next_page_link = html.xpath("//div[@class='controlbar']/span[2]/a")[0].get('href')
+    """
     global a
     if next_page_link:
         print a
@@ -82,9 +117,11 @@ def get_catalog_info(url):
         if a == 2:
             import os
             os._exit(1)
-        next_page_link = urlparse.urljoin(r.url, next_page_link)
-        print next_page_link
-        get_catalog_info(next_page_link)
+    """
+    next_page_link = urlparse.urljoin(r.url, next_page_link)
+    print next_page_link
+    catalog_logger.info(next_page_link)
+    get_catalog_info(next_page_link)
             
 
 

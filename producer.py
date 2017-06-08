@@ -22,26 +22,35 @@ rd = redis.Redis()
 def rpush_to_redis(target, novel_id):
     key = 'target:%s' % novel_id
     rd.rpush(key, target)
+    return
 
 def put_to_queue(queue, novel_id):
     key = 'target:%s' % novel_id
     queue.put(key)
-    
-a = 1
+    return
 
-def get_target(queue):
-    print 'producer: ' + str(os.getpid())
+def queue_task(collection, novel_id):
+    collection.update_one(
+        {"novel_id": novel_id}, {"$set": {"status": "QUEUEING"}})
+    return 
+    
+def get_target(queue, log):
     # MongoDB
     client = MongoClient()
     db = client.jingjiang
-    collection = db.catalog
+    catalog_col = db.catalog
 
     while True:
-        #catalogs = collection.find(limit=1).sort("create_time", 1)
-        catalog = collection.find_one_and_update(
-            {"status": "WAITING"}, {'$set': {"status": "PROCESSING"}}, 
-            sort=[("create_time", 1)])
-        #for catalog in catalogs:
+        catalog = catalog_col.find_one(
+            {"status": "WAITING"}, sort=[("create_time", 1)])
+
+        # 结束 producer，并将结束信号传递给 customer
+        if catalog == None:
+            for i in xrange(3):
+                queue.put('target:-1')
+            queue.close()
+            queue.join_thread()
+            os._exit(1)
 
         novel_id = catalog['novel_id']
         r = requests.get(catalog['novel_link'], headers)
@@ -54,12 +63,13 @@ def get_target(queue):
             # 以 whitespace 进行 split，因为整个字符串中以 whitespace 打头和结尾，
             # 所以 split 后第一项元素和最后一项元素为 ''，需要剔除
             info = re.split(r'\s{4,}', tr.xpath("string(.)"), re.UNICODE)[1:][:-1]
-            print info
             # 剔除 *最新章节
             if u'\xa0*\u6700\u65b0\u66f4\u65b0' in info:
                 info = info[:-1]
+            """
             for i in info:
-                print i
+                log.info(i)
+            """
             # 摘要可能会有换行符分隔，将其合并
             if len(info) > 5:
                 info[2:len(info)-2] = [''.join(info[2:len(info)-2])]
@@ -68,15 +78,17 @@ def get_target(queue):
                 info.insert(2, '无')
             # 点击数量 暂时不需要, 接口如下（xxx 为 novelid 的值）：
             # r = requests.get('http://s8.static.jjwxc.net/getnovelclick.php?novelid=xxx')
+
+            # chapter_link 可能被禁，导致没有
             try:
-                # chapter_link 可能被禁，导致没有
                 chapter_link = tr.xpath(".//a[@itemprop='url']")[0].get('href')
+                print chapter_link
+                log.info(chapter_link)
             except IndexError:
                 pass
                 #chapter_link = chapter_link[0].get('href')
             else:
                 target = {
-                    #"novel_id": novel_id,
                     "chapter_id": info[0],
                     "title": info[1],
                     "abstract": info[2],
@@ -84,22 +96,15 @@ def get_target(queue):
                     "publish_time": info[4],
                     "chapter_link": chapter_link,
                 }
-                #target = {"chapter_link": chapter_link}
                 # 写入 redis
                 target = pickle.dumps(target)
                 rpush_to_redis(target, novel_id)
 
+        # 写入队列
         key = 'target:%s' % novel_id
         queue.put(key)
-        #time.sleep(10)
-        """
-        global a
-        a += 1
-        if a == 2:
-            os._exit(1)
-        """
-        # 写入 queue
-        # put_to_queue(queue, novel_id)
+        # 更改任务状态为 QUEUEING
+        queue_task(catalog_col, novel_id)
         """
         try:
             rd.sadd('catalog6', i)
