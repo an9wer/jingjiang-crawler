@@ -1,9 +1,10 @@
 #-*- coding: utf-8 -*-
 
+import time
+import datetime
 import logging
 import logging.config
 import re
-import datetime
 import urllib
 import urlparse
 import requests
@@ -58,9 +59,16 @@ def insert_catalog(catalog):
     collection = db.catalog
     collection.insert_one(catalog)
     
-a = 1
 def get_catalog_info(url):
-    r = requests.get(url, headers=headers)
+    while True:
+        # 如果请求失败则重复发送请求，直到请求成功为止
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+        # 这里可能是 ConnectionError, ReadTimeout 等
+        except Exception:
+            catalog_logger.info("requests error: %s", url)
+        else:
+            break
     r.encoding = 'gb2312'
     # parser = etree.HTMLParser(encoding='utf-8')
     html = etree.HTML(r.text)
@@ -86,50 +94,54 @@ def get_catalog_info(url):
         novel_link_query = urlparse.urlparse(novel_link).query
         novel_id = urlparse.parse_qs(novel_link_query)['novelid'][0]
 
-        print info[1]
+        #print info[1]
         catalog_logger.info(info[1])
-        catalog = OrderedDict([
-            ("novel", info[1]),
-            ("novel_id", int(novel_id)),
-            ("novel_link", novel_link),
-            ("author", info[0]),
-            ("author_id", int(author_id)),
-            ("author_link", author_link),
-            ("tag", tag.strip() or u'无'), # 再次 strip() 避免 whitespace
-            ("abstract", abstract or u'无'),
-            ("style", info[3]),
-            ("process", info[4]),
-            ("word_count", int(info[5])),
-            ("point", int(info[6])),
-            ("publish_time", info[7]),
-            ("status", 'WAITING'),   # 爬取状态
-            ("create_time", datetime.datetime.now()),
-        ])
-        insert_catalog(catalog)
+        # TODO:可能有些字段还是不匹配，这里直接舍弃
+        try:
+            catalog = OrderedDict([
+                ("novel", info[1]),
+                ("novel_id", int(novel_id)),
+                ("novel_link", novel_link),
+                ("author", info[0]),
+                ("author_id", int(author_id)),
+                ("author_link", author_link),
+                ("tag", tag.strip() or u'无'), # 再次 strip() 避免 whitespace
+                ("abstract", abstract or u'无'),
+                ("style", info[3]),
+                ("process", info[4]),
+                ("word_count", int(info[5])),
+                ("point", int(info[6])),
+                ("publish_time", info[7]),
+                ("status", 'WAITING'),   # 爬取状态
+                ("create_time", datetime.datetime.now()),
+            ])
+        except Exception:
+            pass
+        else:
+            insert_catalog(catalog)
 
     # 获取下一页的 link
     next_page_link = html.xpath("//div[@class='controlbar']/span[2]/a")[0].get('href')
-    """
-    global a
-    if next_page_link:
-        print a
-        a += 1
-        if a == 2:
-            import os
-            os._exit(1)
-    """
-    next_page_link = urlparse.urljoin(r.url, next_page_link)
+
+    if next_page_link is not None:
+        next_page_link = urlparse.urljoin(r.url, next_page_link)
     print next_page_link
     catalog_logger.info(next_page_link)
-    get_catalog_info(next_page_link)
+
+    return next_page_link
             
-
-
-
 
 if __name__ == '__main__':
     # 收费完结
-    #start_url = "http://www.jjwxc.net/bookbase_slave.php?booktype=package"
+    # "http://www.jjwxc.net/bookbase_slave.php?booktype=package"
     # 免费完结
-    start_url = "http://www.jjwxc.net/bookbase_slave.php?booktype=free&opt=&page=1&orderstr=4&endstr=true"
-    get_catalog_info(start_url)
+    # "http://www.jjwxc.net/bookbase_slave.php?booktype=free&opt=&page=1&orderstr=4&endstr=true"
+   
+    url = "http://www.jjwxc.net/bookbase_slave.php?booktype=free&opt=&page=1&orderstr=4&endstr=true"
+    while True:
+        url = get_catalog_info(url)
+        if url == None:
+            catalog_logger.info("the end")
+            break
+        # 避免禁爬，放慢速度
+        time.sleep(5)

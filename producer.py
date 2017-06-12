@@ -47,13 +47,22 @@ def get_target(queue, log):
         # 结束 producer，并将结束信号传递给 customer
         if catalog == None:
             for i in xrange(3):
-                queue.put('target:-1')
+                queue.put("target:-1")
             queue.close()
             queue.join_thread()
             os._exit(1)
 
-        novel_id = catalog['novel_id']
-        r = requests.get(catalog['novel_link'], headers)
+        novel_id = catalog["novel_id"]
+
+        # 如果请求失败则重复发送请求，直到请求成功为止
+        while True:
+            try:
+                r = requests.get(catalog["novel_link"], headers, timeout=5)
+            except Exception:
+                log.info("requests error: %s", catalog["novel_link"])
+            else:
+                break
+
         r.encoding = 'gb2312'
         html = etree.HTML(r.text)
         # 最后一个章节的属性为 itemprop='chapter newestChapter'，所以需要使用 contains
@@ -86,7 +95,6 @@ def get_target(queue, log):
                 log.info(chapter_link)
             except IndexError:
                 pass
-                #chapter_link = chapter_link[0].get('href')
             else:
                 target = {
                     "chapter_id": info[0],
@@ -105,12 +113,6 @@ def get_target(queue, log):
         queue.put(key)
         # 更改任务状态为 QUEUEING
         queue_task(catalog_col, novel_id)
-        """
-        try:
-            rd.sadd('catalog6', i)
-        except redis.exceptions.ResponseError:
-            print 'error'
-        """
 
 if __name__ == '__main__':
     get_target()

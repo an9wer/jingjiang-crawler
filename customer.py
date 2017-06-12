@@ -45,7 +45,6 @@ def parse_target(queue, log):
     novel_col, catalog_col = connect_to_MongoDB()
 
     while True:
-        print 'customer start'
         task = queue.get()
         novel_id = int(task.split(':')[1])
 
@@ -61,7 +60,17 @@ def parse_target(queue, log):
         for i in xrange(target_num):
             target = pickle.loads(rd.lpop(task))
             log.info(target["chapter_link"])
-            r = requests.get(target["chapter_link"], headers=headers)
+
+            # 如果请求失败则重复发送请求，直到请求成功为止
+            while True:
+                try:
+                    r = requests.get(
+                            target["chapter_link"], headers=headers, timeout=5)
+                except Exception:
+                    log.info('requests error: %s', target["chapter_link"])
+                else:
+                    break
+
             r.encoding = 'gb2312'
             html = etree.HTML(r.text)
 
@@ -90,7 +99,6 @@ def parse_target(queue, log):
                     ("publish_time", target["publish_time"]),
                     ("content", content),
                 ]))
-                #f.write(content.encode('utf-8'))
         
         # 更改任务状态为 FINISHED
         novel_title = finish_task(catalog_col, novel_id)
