@@ -8,9 +8,12 @@ import re
 import urllib
 import urlparse
 import requests
+import redis
 from collections import OrderedDict
 from lxml import etree
 from pymongo import MongoClient
+
+from proxies import Proxy
 
 LOGGING = {
     "version": 1,
@@ -46,6 +49,8 @@ catalog_logger = logging.getLogger("catalog")
 
 client = MongoClient()
 
+rd = redis.Redis()
+
 headers = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 6.1; Win64; x64) "
@@ -58,20 +63,43 @@ def insert_catalog(catalog):
     db = client.jingjiang
     collection = db.catalog
     collection.insert_one(catalog)
+    return
+
+def get_proxies():
+    """
+    :return: a list object contains all proxies' url
+    """
+    p = Proxy('catalog_proxies')
+    p.get_proxies()
+    return
+
     
 def get_catalog_info(url):
+    """
+    :param url: the started url
+    :return: the next url
+    """
     while True:
+        proxy = rd.lpop("catalog_proxies")
+        if proxy is None:
+            get_proxies()
+            proxy = rd.lpop("catalog_proxies")
+        print proxy
         # 如果请求失败则重复发送请求，直到请求成功为止
         try:
-            r = requests.get(url, headers=headers, timeout=5)
+            r = requests.get(url, headers=headers, timeout=5, 
+                             proxies={'http': proxy})
+            r.encoding = 'gb2312'
+            html = etree.HTML(r.text)
+            # 获取下一页的 link
+            next_page_link = html.xpath("//div[@class='controlbar']/span[2]/a")[0].get('href')
         # 这里可能是 ConnectionError, ReadTimeout 等
         except Exception:
             catalog_logger.info("requests error: %s", url)
         else:
             break
-    r.encoding = 'gb2312'
-    # parser = etree.HTMLParser(encoding='utf-8')
-    html = etree.HTML(r.text)
+
+
     # 
     for tr in html.xpath("//table[@class='cytable']//tr[position()>1]"):
         # info 元素顺序依次：作者 作品 标签 风格 进度 字数 作品积分 发表时间
@@ -120,8 +148,6 @@ def get_catalog_info(url):
         else:
             insert_catalog(catalog)
 
-    # 获取下一页的 link
-    next_page_link = html.xpath("//div[@class='controlbar']/span[2]/a")[0].get('href')
 
     if next_page_link is not None:
         next_page_link = urlparse.urljoin(r.url, next_page_link)
@@ -138,6 +164,7 @@ if __name__ == '__main__':
     # "http://www.jjwxc.net/bookbase_slave.php?booktype=free&opt=&page=1&orderstr=4&endstr=true"
    
     url = "http://www.jjwxc.net/bookbase_slave.php?booktype=free&opt=&page=1&orderstr=4&endstr=true"
+    proxies = get_proxies()
     while True:
         url = get_catalog_info(url)
         if url == None:
