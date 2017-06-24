@@ -3,7 +3,7 @@ import requests
 import redis
 from lxml import etree
 
-class Proxy(object):
+class _Proxy(object):
     def __init__(self, pool_name):
         self.pool_name = pool_name
         #self.proxies = []
@@ -11,7 +11,7 @@ class Proxy(object):
 
     def get_proxies(self):
         r = requests.get("https://free-proxy-list.net/anonymous-proxy.html", 
-                         #proxies={'https': 'http://67.207.89.177:3128'},
+                         proxies={'https': 'http://104.154.43.252:80'},
                          verify=False)
         html = etree.HTML(r.text)
         ips = html.xpath("//tbody//td[1]")
@@ -25,3 +25,9 @@ class Proxy(object):
             proxies)
 
         return
+
+def Proxy(pool_name):
+    p = _Proxy(pool_name)
+    p.get_proxies()
+    return
+
