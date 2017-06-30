@@ -8,11 +8,8 @@ from producer import get_target
 from customer import parse_target
 
 """
-TODO:
-1.  log
-2.  constant
-如果是一个 producer 和三个 customer 则在 redis 中会维持 5 个任务，在 mongodb 中
-会有一个 QUEUEING 和 三个 PROCESSING
+如果是一个 producer 和三个 customer 则在 redis 中会维持 5 个任务，
+在 mongodb 中会有一个 QUEUEING 和 三个 PROCESSING
 """
 
 LOGGING = {
@@ -29,7 +26,7 @@ LOGGING = {
     "handlers": {
         "producer": {
             "class": "logging.handlers.RotatingFileHandler",
-            "level": "INFO",
+            "level": "DEBUG",
             "formatter": "default",
             "filename": "./log/producer.log",
             "maxBytes": 102400,
@@ -37,7 +34,7 @@ LOGGING = {
         },
         "customer": {
             "class": "logging.handlers.RotatingFileHandler",
-            "level": "INFO",
+            "level": "DEBUG",
             "formatter": "default",
             "filename": "./log/customer.log",
             "maxBytes": 102400,
@@ -46,11 +43,11 @@ LOGGING = {
     },
     "loggers": {
         "producer": {
-            "level": "INFO",
+            "level": "DEBUG",
             "handlers": ['producer'],
         },
         "customer": {
-            "level": "INFO",
+            "level": "DEBUG",
             "handlers": ['customer'],
         },
     },
@@ -62,12 +59,15 @@ customer_logger = logging.getLogger("customer")
 
 
 queue = multiprocessing.Queue(maxsize=1)
+lock = multiprocessing.Lock()
 
-producer = multiprocessing.Process(target=get_target, args=(queue, producer_logger))
+producer = multiprocessing.Process(
+    target=get_target, args=(queue, producer_logger))
 producer.start()
 
 for i in xrange(3):
-    customer = multiprocessing.Process(target=parse_target, args=(queue, customer_logger))
+    customer = multiprocessing.Process(
+        target=parse_target, args=(queue, lock, customer_logger))
     customer.start()
 
 

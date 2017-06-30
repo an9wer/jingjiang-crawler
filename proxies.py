@@ -11,7 +11,7 @@ class _Proxy(object):
 
     def get_proxies(self):
         r = requests.get("https://free-proxy-list.net/anonymous-proxy.html", 
-                         proxies={'https': 'http://104.154.43.252:80'},
+                         #proxies={'https': 'http://104.154.43.252:80'},
                          verify=False)
         html = etree.HTML(r.text)
         ips = html.xpath("//tbody//td[1]")
